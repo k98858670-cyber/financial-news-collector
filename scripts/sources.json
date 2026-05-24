@@ -101,6 +101,18 @@
         "reliability": "high",
         "update_frequency": "daily",
         "description": "南方财经全媒体集团旗下核心财经媒体，以深度调查和政策解读见长。"
+      },
+      {
+        "id": "chinafundnews",
+        "name": "中国基金报",
+        "fetch_method": "search",
+        "url": "https://www.chinafundnews.com/",
+        "search_query": "site:chinafundnews.com 最新基金新闻",
+        "category": "comprehensive",
+        "lang": "zh",
+        "reliability": "high",
+        "update_frequency": "daily",
+        "description": "中国基金报，证监会指定信息披露媒体，专注基金、资管、理财行业权威报道。"
       }
     ],
     "research_reports": [
