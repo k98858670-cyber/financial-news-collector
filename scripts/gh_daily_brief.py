@@ -7,7 +7,7 @@ GitHub Actions Daily Financial Brief
 3. Emails to phone with PDF attachment
 """
 
-import os, sys, time, json, hashlib, re, smtplib, tempfile
+import os, sys, time, json, hashlib, re, smtplib, tempfile, textwrap
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -286,6 +286,152 @@ def build_pdf(items, date_str, pdf_path):
 
 
 
+
+def build_douyin_images(items, date_str, out_dir):
+    """Generate Douyin-ready portrait images (1080x1920) for carousel posting.
+    Returns list of image paths."""
+    from PIL import Image, ImageDraw, ImageFont
+    import textwrap
+
+    W, H = 1080, 1920
+    paths = []
+
+    # Try to use CJK font
+    font_paths = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    ]
+    title_font = None
+    body_font = None
+    small_font = None
+
+    for fp in font_paths:
+        if os.path.exists(fp):
+            try:
+                title_font = ImageFont.truetype(fp, 56)
+                body_font = ImageFont.truetype(fp, 32)
+                small_font = ImageFont.truetype(fp, 24)
+                break
+            except:
+                pass
+
+    if not title_font:
+        title_font = ImageFont.load_default()
+        body_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+
+    # Color scheme (dark finance theme)
+    BG = (18, 18, 36)         # dark navy
+    ACCENT = (233, 69, 96)    # red accent
+    GOLD = (255, 200, 60)     # gold for highlights
+    WHITE = (255, 255, 255)
+    LIGHT_GRAY = (180, 180, 190)
+    CARD_BG = (30, 30, 55)    # slightly lighter card
+
+    # ---- Slide 0: Title/Cover ----
+    img = Image.new("RGB", (W, H), BG)
+    draw = ImageDraw.Draw(img)
+
+    # Top accent bar
+    draw.rectangle([(0, 0), (W, 8)], fill=ACCENT)
+
+    # Date
+    draw.text((80, 200), date_str, fill=LIGHT_GRAY, font=small_font)
+
+    # Title
+    title = "每日财经要闻"
+    bbox = draw.textbbox((0, 0), title, font=title_font)
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw)//2, 280), title, fill=WHITE, font=title_font)
+
+    # Subtitle
+    subtitle = f"共 {len(items)} 条 · {len(set(i['source_id'] for i in items))} 个来源"
+    bbox = draw.textbbox((0, 0), subtitle, font=body_font)
+    sw = bbox[2] - bbox[0]
+    draw.text(((W - sw)//2, 380), subtitle, fill=GOLD, font=body_font)
+
+    # Decorative line
+    draw.line([(340, 460), (740, 460)], fill=ACCENT, width=3)
+
+    # Category preview
+    by_cat = {}
+    for item in items:
+        by_cat.setdefault(item["category"], []).append(item)
+    cat_order = ["breaking_news", "cn_government", "intl_government",
+                 "comprehensive", "global_news", "global_markets",
+                 "investment_research", "domestic_research"]
+    y = 540
+    for cat in cat_order:
+        if cat in by_cat:
+            cnt = len(by_cat[cat])
+            label = CAT_LABELS.get(cat, cat)
+            draw.text((120, y), f"{label}　{cnt} 条", fill=LIGHT_GRAY, font=small_font)
+            y += 50
+
+    # Footer
+    draw.text((80, H - 120), "扫码关注获取每日财经要闻", fill=LIGHT_GRAY, font=small_font)
+    draw.text((80, H - 80), "Financial News Collector · 自动生成", fill=(100, 100, 120), font=small_font)
+
+    cover_path = os.path.join(out_dir, f"douyin_00_cover.png")
+    img.save(cover_path, quality=95)
+    paths.append(cover_path)
+    print(f"    Slide 0: Cover")
+
+    # ---- Slides 1-N: Category cards ----
+    slide_idx = 1
+    for cat in cat_order:
+        if cat not in by_cat:
+            continue
+        cat_items = by_cat[cat][:5]
+        label = CAT_LABELS.get(cat, cat)
+
+        img = Image.new("RGB", (W, H), BG)
+        draw = ImageDraw.Draw(img)
+
+        # Header
+        draw.rectangle([(0, 0), (W, 160)], fill=CARD_BG)
+        draw.text((80, 40), label, fill=ACCENT, font=title_font)
+        cnt_text = f"{len(cat_items)} 条重要新闻"
+        draw.text((80, 110), cnt_text, fill=LIGHT_GRAY, font=small_font)
+
+        y = 220
+        for item in cat_items:
+            # Card background
+            card_h = 300
+            if y + card_h > H - 100:
+                card_h = H - 100 - y
+            draw.rectangle([(40, y), (W-40, y+card_h)], fill=CARD_BG, outline=(60, 60, 80))
+
+            # Source badge
+            source = item["source_name"]
+            draw.text((80, y + 20), source, fill=GOLD, font=small_font)
+
+            # Title (wrap text)
+            title_text = item["title"]
+            wrapped = textwrap.fill(title_text, width=30)
+            draw.text((80, y + 60), wrapped, fill=WHITE, font=body_font)
+
+            # Summary
+            summary = item.get("summary", "")[:120]
+            if summary:
+                wrapped_s = textwrap.fill(summary, width=40)
+                draw.text((80, y + 160), wrapped_s, fill=LIGHT_GRAY, font=small_font)
+
+            y += card_h + 30
+
+        # Footer
+        draw.text((80, H - 60), f"{slide_idx}  ·  Financial News Collector", fill=(100, 100, 120), font=small_font)
+
+        img_path = os.path.join(out_dir, f"douyin_{slide_idx:02d}_{cat}.png")
+        img.save(img_path, quality=95)
+        paths.append(img_path)
+        print(f"    Slide {slide_idx}: {label}")
+        slide_idx += 1
+
+    return paths
+
 def build_docx(items, date_str, docx_path):
     """Generate a formatted DOCX report."""
     from docx import Document
@@ -408,14 +554,20 @@ def main():
     build_docx(items, today_str, docx_path)
     print(f"  DOCX: {docx_path} ({os.path.getsize(docx_path)/1024:.1f} KB)")
 
+    # Generate Douyin images
+    douyin_dir = tempfile.mkdtemp(prefix="douyin_")
+    douyin_paths = build_douyin_images(items, today_str, douyin_dir)
+    print(f"  Douyin: {len(douyin_paths)} slides generated")
+
     print(f"\n[4/4] Sending email...")
     sender = os.environ.get("EMAIL_SENDER", "")
     password = os.environ.get("EMAIL_PASSWORD", "")
     recipient = os.environ.get("EMAIL_TO", sender)
 
     if sender and password:
+        all_attachments = [pdf_path, docx_path] + douyin_paths
         send_email(sender, password, recipient,
-                   f"📰 每日财经要闻 {today_str}", report, [pdf_path, docx_path])
+                   f"📰 每日财经要闻 {today_str}", report, all_attachments)
     else:
         print("  SKIP: no email config")
         print(report[:500])
