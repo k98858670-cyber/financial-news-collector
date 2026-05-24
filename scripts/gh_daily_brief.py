@@ -15,9 +15,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from datetime import datetime, timezone, timedelta
-from urllib.parse import quote, urljoin
-from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
+import requests
+from urllib.parse import quote
 
 BEIJING_TZ = timezone(timedelta(hours=8))
 
@@ -82,7 +81,18 @@ SMTP_CFG = {
     "163.com": ("smtp.163.com", 465, True),
 }
 
-UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+SESSION = None
+
+def get_session():
+    global SESSION
+    if SESSION is None:
+        SESSION = requests.Session()
+        SESSION.headers.update({
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+    return SESSION
 
 
 def now_bj():
@@ -94,52 +104,67 @@ def gen_id(*parts):
 
 
 def ddg_search(query, max_results=5):
-    """Search DuckDuckGo HTML and extract results."""
-    url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
-    req = Request(url, headers={"User-Agent": UA})
+    """Search via DDG HTML (primary) or DDG Lite (fallback)."""
+    sess = get_session()
+
+    # Try DDG HTML first
     try:
-        with urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-    except Exception as e:
-        print(f"    DDG fetch error: {e}", file=sys.stderr)
-        return []
+        url = f"https://html.duckduckgo.com/html/"
+        resp = sess.post(url, data={"q": query}, timeout=20)
+        if resp.status_code == 200 and len(resp.text) > 500:
+            return _parse_ddg_html(resp.text, max_results)
+    except Exception:
+        pass
 
+    # Fallback: DDG Lite
+    try:
+        url = f"https://lite.duckduckgo.com/lite/"
+        resp = sess.post(url, data={"q": query}, timeout=20)
+        if resp.status_code == 200:
+            return _parse_ddg_lite(resp.text, max_results)
+    except Exception:
+        pass
+
+    return []
+
+
+def _parse_ddg_html(html, max_results):
     results = []
-    # Parse DDG HTML results
-    # Each result is in a div with class "result"
-    # Title is in <a class="result__a">
-    # Snippet is in <a class="result__snippet">
-    # URL is in <a class="result__url">
-
-    # Use regex to extract results
-    link_pattern = re.compile(
+    link_pat = re.compile(
         r'<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
         re.DOTALL | re.IGNORECASE
     )
-    snippet_pattern = re.compile(
+    snippet_pat = re.compile(
         r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
         re.DOTALL | re.IGNORECASE
     )
-
-    links = link_pattern.findall(html)
-    snippets = snippet_pattern.findall(html)
-
+    links = link_pat.findall(html)
+    snippets = snippet_pat.findall(html)
     for i, (href, title_raw) in enumerate(links[:max_results]):
         title = re.sub(r'<[^>]+>', '', title_raw).strip()
-        if not title or "uddg=" in href.lower():
+        if not title:
             continue
-        # Clean href
-        href_clean = href.strip()
         snippet = ""
         if i < len(snippets):
             snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
+        results.append({"title": title, "href": href.strip(), "body": snippet})
+    return results
 
-        results.append({
-            "title": title,
-            "href": href_clean,
-            "body": snippet,
-        })
 
+def _parse_ddg_lite(html, max_results):
+    results = []
+    # DDG Lite: each result is in <tr class="result-snippet">
+    # Link is <a rel="nofollow" href="...">
+    rows = re.findall(r'<tr[^>]*class="result-snippet"[^>]*>(.*?)</tr>', html, re.DOTALL)
+    for row in rows[:max_results]:
+        link_m = re.search(r'href="([^"]+)"', row)
+        title_m = re.search(r'<a[^>]*>(.*?)</a>', row)
+        snippet_m = re.search(r'class="result-snippet">(.*?)</td>', row, re.DOTALL)
+        if title_m:
+            title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
+            href = link_m.group(1) if link_m else ""
+            snippet = re.sub(r'<[^>]+>', '', snippet_m.group(1)).strip() if snippet_m else ""
+            results.append({"title": title, "href": href, "body": snippet})
     return results
 
 
