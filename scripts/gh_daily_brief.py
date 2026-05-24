@@ -4,7 +4,9 @@ GitHub Actions Daily Financial Brief
 =====================================
 1. Searches 37 sources via DuckDuckGo HTML
 2. Generates PDF report
-3. Emails to phone with PDF attachment
+3. 3. LLM analyzes capital market impact (利好/利空)
+4. Generates PDF + DOCX + Douyin images
+5. Emails to phone
 """
 
 import os, sys, time, json, hashlib, re, smtplib, tempfile, textwrap
@@ -181,7 +183,9 @@ def search_all(since_date, max_per=5):
 
 
 def text_report(items, date_str):
-    lines = [f"📰 每日财经要闻", f"日期: {date_str}", f"共搜集 {len(items)} 条新闻", ""]
+    analyzed = sum(1 for i in items if i.get("impact"))
+    lines = [f"📰 每日财经要闻", f"日期: {date_str}",
+             f"共搜集 {len(items)} 条新闻 · {analyzed} 条已分析市场影响", ""]
     by_cat = {}
     for item in items:
         by_cat.setdefault(item["category"], []).append(item)
@@ -191,7 +195,12 @@ def text_report(items, date_str):
         if cat in by_cat:
             lines.append(f"\n{CAT_LABELS.get(cat, cat)}")
             for item in by_cat[cat][:5]:
-                lines.append(f"  • [{item['source_name']}] {item['title'][:100]}")
+                impact_tag = f" {item.get('impact','')}" if item.get('impact') else ""
+                lines.append(f"  • [{item['source_name']}]{impact_tag} {item['title'][:100]}")
+                if item.get("reasoning"):
+                    lines.append(f"    💡 {item['reasoning'][:120]}")
+                if item.get("stocks"):
+                    lines.append(f"    📈 关注: {item['stocks'][:150]}")
                 if item.get("url"):
                     lines.append(f"    {item['url']}")
     hits = len(set(i["source_id"] for i in items))
@@ -269,12 +278,20 @@ def build_pdf(items, date_str, pdf_path):
             summary = item.get("summary", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             source = item["source_name"]
 
+            impact = item.get("impact", "")
+            if impact:
+                impact_color = "#22c55e" if "利好" in impact else ("#ef4444" if "利空" in impact else "#888")
+                title = f'{title} <font color="{impact_color}">【{impact}】</font>'
             if url:
                 link = f'<font color="blue"><u><a href="{url}">{title}</a></u></font>'
             else:
                 link = title
             story.append(Paragraph(link, body_s))
-            story.append(Paragraph(source, src_s))
+            reasoning = item.get("reasoning", "")
+            src_line = source
+            if reasoning:
+                src_line += f" | 💡 {reasoning}"
+            story.append(Paragraph(src_line, src_s))
             if summary and summary != title:
                 story.append(Paragraph(summary[:200], body_s))
             story.append(Spacer(1, 4))
@@ -288,6 +305,84 @@ def build_pdf(items, date_str, pdf_path):
 
 
 
+
+
+def analyze_impact(items):
+    """Use Groq LLM to analyze capital market impact of each news item.
+    Returns items enriched with impact, sectors, stocks, reasoning."""
+    import urllib.request as urlreq
+
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        print("  ⚠️  GROQ_API_KEY not set, skipping impact analysis")
+        return items
+
+    print(f"  Analyzing {len(items)} items with Groq LLM...")
+
+    # Process in batches to stay within token limits
+    batch_size = 20
+    analyzed = []
+
+    for batch_start in range(0, len(items), batch_size):
+        batch = items[batch_start:batch_start + batch_size]
+        batch_text = ""
+        for i, item in enumerate(batch):
+            batch_text += f"[{i}] {item['source_name']}: {item['title']}\n"
+
+        prompt = f"""Analyze the following Chinese & global financial news headlines.
+For EACH item [N], output a JSON array with one object per item:
+[
+  {{"idx": 0, "impact": "利好/利空/中性", "direction": "positive/negative/neutral",
+    "sectors": ["affected sector1", "sector2"],
+    "stocks": ["stock1 ticker", "stock2 ticker"],
+    "reasoning": "1-sentence market impact in Chinese"}}
+]
+
+News:
+{batch_text}
+
+Output ONLY valid JSON array, no other text."""
+
+        payload = json.dumps({
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "max_tokens": 4000,
+        }).encode()
+
+        req = urlreq.Request("https://api.groq.com/openai/v1/chat/completions",
+                             data=payload,
+                             headers={"Authorization": f"Bearer {api_key}",
+                                      "Content-Type": "application/json"})
+        try:
+            with urlreq.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read())
+            content = result["choices"][0]["message"]["content"]
+
+            # Extract JSON array
+            json_start = content.find("[")
+            json_end = content.rfind("]") + 1
+            if json_start >= 0 and json_end > json_start:
+                analyses = json.loads(content[json_start:json_end])
+                for a in analyses:
+                    idx = a.get("idx", -1)
+                    if 0 <= idx < len(batch):
+                        batch[idx]["impact"] = a.get("impact", "中性")
+                        batch[idx]["direction"] = a.get("direction", "neutral")
+                        batch[idx]["sectors"] = ", ".join(a.get("sectors", []))
+                        batch[idx]["stocks"] = ", ".join(a.get("stocks", []))
+                        batch[idx]["reasoning"] = a.get("reasoning", "")
+            else:
+                print(f"    Batch {batch_start}: LLM returned non-JSON: {content[:100]}...")
+        except Exception as e:
+            print(f"    Batch {batch_start} error: {e}")
+
+        analyzed.extend(batch)
+        print(f"    [{batch_start+1}-{min(batch_start+batch_size, len(items))}] analyzed")
+        if batch_start + batch_size < len(items):
+            time.sleep(1)
+
+    return analyzed
 
 def build_douyin_images(items, date_str, out_dir):
     """Generate Douyin-ready portrait images (1080x1920) for carousel posting.
@@ -410,10 +505,18 @@ def build_douyin_images(items, date_str, out_dir):
             source = item["source_name"]
             draw.text((80, y + 20), source, fill=GOLD, font=small_font)
 
+            # Impact tag
+            impact = item.get("impact", "")
+            if impact:
+                imp_color = (34, 197, 94) if "利好" in impact else ((239, 68, 68) if "利空" in impact else (180, 180, 190))
+                draw.text((80, y + 20), f"【{impact}】", fill=imp_color, font=small_font)
+                y_off = 50
+            else:
+                y_off = 0
             # Title (wrap text)
             title_text = item["title"]
             wrapped = textwrap.fill(title_text, width=30)
-            draw.text((80, y + 60), wrapped, fill=WHITE, font=body_font)
+            draw.text((80, y + 60 + y_off), wrapped, fill=WHITE, font=body_font)
 
             # Summary
             summary = item.get("summary", "")[:120]
@@ -479,8 +582,18 @@ def build_docx(items, date_str, docx_path):
             if url:
                 run.font.color.rgb = RGBColor(0, 102, 204)
 
+            # Impact tag
+            impact = item.get("impact", "")
+            if impact:
+                p_imp = doc.add_paragraph(f'  【{impact}】')
+                p_imp.runs[0].font.size = Pt(9)
+                p_imp.runs[0].font.color.rgb = RGBColor(34, 197, 94) if "利好" in impact else (RGBColor(239, 68, 68) if "利空" in impact else RGBColor(136, 136, 136))
             # Source
-            p2 = doc.add_paragraph(f'  {source}')
+            reasoning = item.get("reasoning", "")
+            src_text = f'  {source}'
+            if reasoning:
+                src_text += f' | 💡 {reasoning}'
+            p2 = doc.add_paragraph(src_text)
             p2.paragraph_format.space_after = Pt(2)
             p2.runs[0].font.size = Pt(7)
             p2.runs[0].font.color.rgb = RGBColor(160, 160, 160)
@@ -543,10 +656,14 @@ def main():
     hits = len(set(i["source_id"] for i in items))
     print(f"  -> {len(items)} items from {hits}/{len(SOURCES)} sources")
 
-    print(f"\n[2/4] Building text report...")
+    print(f"\n[2/5] Analyzing capital market impact (Groq LLM)...")
+    items = analyze_impact(items)
+    analyzed_count = sum(1 for i in items if i.get("impact"))
+
+    print(f"\n[3/5] Building text report...")
     report = text_report(items, today_str)
 
-    print(f"\n[3/4] Generating PDF...")
+    print(f"\n[4/5] Generating PDF...")
     pdf_path = os.path.join(tempfile.gettempdir(), f"每日财经新闻_{today_str}.pdf")
     build_pdf(items, today_str, pdf_path)
     print(f"  PDF: {pdf_path} ({os.path.getsize(pdf_path)/1024:.1f} KB)")
@@ -561,7 +678,7 @@ def main():
     douyin_paths = build_douyin_images(items, today_str, douyin_dir)
     print(f"  Douyin: {len(douyin_paths)} slides generated")
 
-    print(f"\n[4/4] Sending email...")
+    print(f"\n[5/5] Sending email...")
     sender = os.environ.get("EMAIL_SENDER", "")
     password = os.environ.get("EMAIL_PASSWORD", "")
     recipient = os.environ.get("EMAIL_TO", sender)
