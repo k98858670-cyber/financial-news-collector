@@ -21,16 +21,16 @@ from urllib.parse import quote
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 SOURCES = [
-    {"id": "cls", "name": "财联社", "query": "site:cls.cn 最新财经快讯", "cat": "breaking_news", "lang": "zh", "rel": "high"},
-    {"id": "sina_finance", "name": "新浪财经", "query": "site:finance.sina.com.cn 最新财经新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
-    {"id": "eastmoney", "name": "东方财富", "query": "site:eastmoney.com 最新要闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
-    {"id": "wallstreetcn", "name": "华尔街见闻", "query": "site:wallstreetcn.com 最新资讯", "cat": "global_finance", "lang": "zh", "rel": "high"},
-    {"id": "stcn", "name": "证券时报", "query": "site:stcn.com 最新证券新闻", "cat": "securities", "lang": "zh", "rel": "high"},
-    {"id": "cs_com_cn", "name": "中国证券报", "query": "site:cs.com.cn 最新证券资讯", "cat": "securities", "lang": "zh", "rel": "high"},
-    {"id": "yicai", "name": "第一财经", "query": "site:yicai.com 最新财经新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
-    {"id": "21jingji", "name": "21世纪经济报道", "query": "site:21jingji.com 最新财经", "cat": "comprehensive", "lang": "zh", "rel": "high"},
-    {"id": "ce_cn", "name": "经济日报", "query": "site:ce.cn 经济新闻", "cat": "comprehensive", "lang": "zh", "rel": "highest"},
-    {"id": "chinafundnews", "name": "中国基金报", "query": "site:chinafundnews.com 基金新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
+    {"id": "cls", "name": "财联社", "query": "财联社 最新财经快讯", "cat": "breaking_news", "lang": "zh", "rel": "high"},
+    {"id": "sina_finance", "name": "新浪财经", "query": "新浪财经 最新财经新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
+    {"id": "eastmoney", "name": "东方财富", "query": "东方财富 最新财经要闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
+    {"id": "wallstreetcn", "name": "华尔街见闻", "query": "华尔街见闻 最新资讯", "cat": "global_finance", "lang": "zh", "rel": "high"},
+    {"id": "stcn", "name": "证券时报", "query": "证券时报 最新证券新闻", "cat": "securities", "lang": "zh", "rel": "high"},
+    {"id": "cs_com_cn", "name": "中国证券报", "query": "中国证券报 最新证券资讯", "cat": "securities", "lang": "zh", "rel": "high"},
+    {"id": "yicai", "name": "第一财经", "query": "第一财经 最新财经新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
+    {"id": "21jingji", "name": "21世纪经济报道", "query": "21世纪经济报道 最新财经", "cat": "comprehensive", "lang": "zh", "rel": "high"},
+    {"id": "ce_cn", "name": "经济日报", "query": "经济日报 最新经济新闻", "cat": "comprehensive", "lang": "zh", "rel": "highest"},
+    {"id": "chinafundnews", "name": "中国基金报", "query": "中国基金报 基金新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
     {"id": "goldman_sachs", "name": "高盛研报", "query": "Goldman Sachs China research report", "cat": "investment_research", "lang": "en", "rel": "highest"},
     {"id": "jpmorgan", "name": "摩根大通研报", "query": "JPMorgan China market insights report", "cat": "investment_research", "lang": "en", "rel": "highest"},
     {"id": "morgan_stanley", "name": "摩根士丹利研报", "query": "Morgan Stanley China equity research", "cat": "investment_research", "lang": "en", "rel": "highest"},
@@ -43,15 +43,15 @@ SOURCES = [
     {"id": "cnbc", "name": "CNBC", "query": "CNBC China Asia markets latest", "cat": "global_markets", "lang": "en", "rel": "high"},
     {"id": "wsj", "name": "华尔街日报", "query": "WSJ China finance economy news", "cat": "global_finance", "lang": "en", "rel": "highest"},
     {"id": "ft", "name": "金融时报", "query": "Financial Times China markets economy", "cat": "global_finance", "lang": "en", "rel": "highest"},
-    {"id": "gov_cn", "name": "中国政府网", "query": "site:gov.cn 产业政策 最新", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "ndrc", "name": "国家发改委", "query": "site:ndrc.gov.cn 产业政策 通知", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "miit", "name": "工信部", "query": "site:miit.gov.cn 产业政策 通知", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "mofcom", "name": "商务部", "query": "site:mofcom.gov.cn 公告 政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "mof_cn", "name": "财政部", "query": "site:mof.gov.cn 政策 通知", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "pbc", "name": "中国人民银行", "query": "site:pbc.gov.cn 货币政策 公告", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "csrc", "name": "证监会", "query": "site:csrc.gov.cn 公告 政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "nfra", "name": "金融监管总局", "query": "site:nfra.gov.cn 政策 通知", "cat": "cn_government", "lang": "zh", "rel": "highest"},
-    {"id": "stats_cn", "name": "国家统计局", "query": "site:stats.gov.cn 数据发布", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "gov_cn", "name": "中国政府网", "query": "中国政府网 最新产业政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "ndrc", "name": "国家发改委", "query": "国家发改委 最新产业政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "miit", "name": "工信部", "query": "工信部 最新产业政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "mofcom", "name": "商务部", "query": "商务部 最新贸易政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "mof_cn", "name": "财政部", "query": "财政部 最新财税政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "pbc", "name": "中国人民银行", "query": "中国人民银行 货币政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "csrc", "name": "证监会", "query": "证监会 最新监管政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "nfra", "name": "金融监管总局", "query": "金融监管总局 最新政策", "cat": "cn_government", "lang": "zh", "rel": "highest"},
+    {"id": "stats_cn", "name": "国家统计局", "query": "国家统计局 最新经济数据", "cat": "cn_government", "lang": "zh", "rel": "highest"},
     {"id": "federal_reserve", "name": "美联储", "query": "Federal Reserve FOMC statement press release", "cat": "intl_government", "lang": "en", "rel": "highest"},
     {"id": "us_treasury", "name": "美国财政部", "query": "US Treasury sanctions policy latest", "cat": "intl_government", "lang": "en", "rel": "highest"},
     {"id": "us_commerce", "name": "美国商务部", "query": "US Commerce Department export control entity list", "cat": "intl_government", "lang": "en", "rel": "highest"},
@@ -173,8 +173,8 @@ def search_all(since_date, max_per=5):
     total = len(SOURCES)
     for i, src in enumerate(SOURCES):
         query = src["query"]
-        if since_date and "after:" not in query:
-            query = f"{query} after:{since_date}"
+        if since_date and "近" not in query and "最新" in query:
+            pass  # query already has 最新
 
         print(f"  [{i+1}/{total}] {src['name']} ", end="", flush=True)
         try:
