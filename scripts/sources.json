@@ -113,6 +113,18 @@
         "reliability": "high",
         "update_frequency": "daily",
         "description": "中国基金报，证监会指定信息披露媒体，专注基金、资管、理财行业权威报道。"
+      },
+      {
+        "id": "ce_cn",
+        "name": "经济日报",
+        "fetch_method": "search",
+        "url": "https://www.ce.cn/",
+        "search_query": "site:ce.cn 最新经济新闻",
+        "category": "comprehensive",
+        "lang": "zh",
+        "reliability": "highest",
+        "update_frequency": "daily",
+        "description": "经济日报，国务院主办的中央级经济类党报，宏观经济政策权威解读。"
       }
     ],
     "research_reports": [

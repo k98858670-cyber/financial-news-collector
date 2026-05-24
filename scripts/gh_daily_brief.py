@@ -28,6 +28,7 @@ SOURCES = [
     {"id": "cs_com_cn", "name": "中国证券报", "query": "site:cs.com.cn 最新证券资讯", "cat": "securities", "lang": "zh", "rel": "high"},
     {"id": "yicai", "name": "第一财经", "query": "site:yicai.com 最新财经新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
     {"id": "21jingji", "name": "21世纪经济报道", "query": "site:21jingji.com 最新财经", "cat": "comprehensive", "lang": "zh", "rel": "high"},
+    {"id": "ce_cn", "name": "经济日报", "query": "site:ce.cn 经济新闻", "cat": "comprehensive", "lang": "zh", "rel": "highest"},
     {"id": "chinafundnews", "name": "中国基金报", "query": "site:chinafundnews.com 基金新闻", "cat": "comprehensive", "lang": "zh", "rel": "high"},
     {"id": "goldman_sachs", "name": "高盛研报", "query": "Goldman Sachs China research report", "cat": "investment_research", "lang": "en", "rel": "highest"},
     {"id": "jpmorgan", "name": "摩根大通研报", "query": "JPMorgan China market insights report", "cat": "investment_research", "lang": "en", "rel": "highest"},
