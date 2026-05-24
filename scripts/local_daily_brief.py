@@ -164,7 +164,7 @@ Headlines:
 Output ONLY JSON array."""
         try:
             resp = requests.post("https://api.siliconflow.cn/v1/chat/completions",
-                json={"model":"Qwen/Qwen2.5-7B-Instruct","messages":[{"role":"user","content":prompt}],
+                json={"model":"deepseek-ai/DeepSeek-V3","messages":[{"role":"user","content":prompt}],
                       "temperature":0.3,"max_tokens":4000},
                 headers={"Authorization":f"Bearer {api_key}"}, timeout=90)
             ct = resp.json()["choices"][0]["message"]["content"]
@@ -237,7 +237,12 @@ def build_pdf(items, date_str, path):
             src = it["source_name"]
             if it.get("ai_summary"): 
                 story.append(Paragraph(f"📝 {it['ai_summary']}",rs))
-            if it.get("reasoning"): src+=f" | 💡 {it['reasoning']}"
+            impact_parts = []
+            if it.get("a_share"): impact_parts.append(f"A股: {it['a_share']}")
+            if it.get("hk_stock") and it["hk_stock"]!="无": impact_parts.append(f"港股: {it['hk_stock']}")
+            if it.get("us_stock") and it["us_stock"]!="无": impact_parts.append(f"美股: {it['us_stock']}")
+            if impact_parts:
+                story.append(Paragraph(" | ".join(impact_parts), rs))
             if it.get("stocks"): src+=f" | 📈 {it['stocks']}"
             story.append(Paragraph(src,rs))
             story.append(Spacer(1,4))
@@ -445,7 +450,12 @@ def build_pdf(items, date_str, path):
             src = it["source_name"]
             if it.get("ai_summary"): 
                 story.append(Paragraph(f"📝 {it['ai_summary']}",rs))
-            if it.get("reasoning"): src+=f" | 💡 {it['reasoning']}"
+            impact_parts = []
+            if it.get("a_share"): impact_parts.append(f"A股: {it['a_share']}")
+            if it.get("hk_stock") and it["hk_stock"]!="无": impact_parts.append(f"港股: {it['hk_stock']}")
+            if it.get("us_stock") and it["us_stock"]!="无": impact_parts.append(f"美股: {it['us_stock']}")
+            if impact_parts:
+                story.append(Paragraph(" | ".join(impact_parts), rs))
             if it.get("stocks"): src+=f" | 📈 {it['stocks']}"
             story.append(Paragraph(src,rs))
             story.append(Spacer(1,4))
