@@ -408,7 +408,9 @@ def build_pdf(items, date_str, pdf_path):
                 src += f" | 💡 {item['reasoning']}"
             story.append(Paragraph(src, rs))
             if item.get("summary") and item["summary"] != item["title"]:
-                story.append(Paragraph(item["summary"][:200], bs))
+                s = item.get("summary", "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            if s and s != item["title"]:
+                story.append(Paragraph(s[:200], bs))
             story.append(Spacer(1, 4))
         story.append(Spacer(1, 4))
 
