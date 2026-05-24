@@ -143,55 +143,68 @@ def google_news_search(query, max_results=8, retries=3):
 # LLM Impact Analysis
 # ============================================================
 def analyze_impact(items):
+    """DeepSeek V3: filter A-share relevant, summarize, analyze A/HK/US impact."""
     api_key = os.environ.get("SF_API_KEY","")
     if not api_key:
         print("  ⚠️  SF_API_KEY not set, skipping impact analysis")
         return items
-    print(f"  Analyzing {len(items)} items...")
-    batch_size = 20
+
+    print(f"  DeepSeek V3 analyzing {len(items)} items...")
+    batch_size = 15
+    analyzed = []
+
     for start in range(0, len(items), batch_size):
         batch = items[start:start+batch_size]
-        lines = "\n".join(f"[{i}] {it['source_name']}: {it['title']}" for i,it in enumerate(batch))
-        prompt = f"""Analyze financial headlines for GLOBAL capital market impact.
-Output JSON array:
-[{{"idx":0,"impact":"利好/利空/中性","direction":"positive/negative/neutral",
-   "sectors":["sector"],"stocks":["ticker"],
-   "reasoning":"1-sentence impact in Chinese",
-   "summary":"1-sentence news summary in Chinese"}}]
+        lines = "\n".join(f"[{i}] [{it['source_name']}] {it['title']}" for i,it in enumerate(batch))
 
-Headlines:
+        prompt = f"""你是资深A股分析师。从以下新闻中筛选出可能对A股市场产生影响的新闻。
+对每条重要新闻：(1)一句话概述内容 (2)分别分析对A股、港股、美股的影响。
+无影响或中性的不要输出。
+
+输出JSON数组：
+[{{"idx":0,"impact":"利好/利空","summary":"新闻概述",
+   "a_share":"对A股影响","hk_stock":"对港股影响(无则填无)",
+   "us_stock":"对美股影响(无则填无)",
+   "sectors":["板块"],"stocks":["代码 名称"]}}]
+
+新闻：
 {lines}
-Output ONLY JSON array."""
+
+只输出JSON数组。"""
+
         try:
             resp = requests.post("https://api.siliconflow.cn/v1/chat/completions",
-                json={"model":"deepseek-ai/DeepSeek-V3","messages":[{"role":"user","content":prompt}],
+                json={"model":"deepseek-ai/DeepSeek-V3",
+                      "messages":[{"role":"user","content":prompt}],
                       "temperature":0.3,"max_tokens":4000},
-                headers={"Authorization":f"Bearer {api_key}"}, timeout=90)
+                headers={"Authorization":f"Bearer {api_key}"}, timeout=180)
             ct = resp.json()["choices"][0]["message"]["content"]
             js = ct.find("["); je = ct.rfind("]")+1
             if js>=0 and je>js:
-                for a in json.loads(ct[js:je]):
+                analyses = json.loads(ct[js:je])
+                kept = set()
+                for a in analyses:
                     idx = a.get("idx",-1)
-                    if 0<=idx<len(batch):
-                        batch[idx]["impact"]=a.get("impact","中性")
-                        batch[idx]["direction"]=a.get("direction","neutral")
-                        batch[idx]["sectors"]=", ".join(a.get("sectors",[]))
-                        batch[idx]["stocks"]=", ".join(a.get("stocks",[]))
-                        batch[idx]["reasoning"]=a.get("reasoning","")
-                        if a.get("summary"):
-                            batch[idx]["ai_summary"]=a.get("summary","")
-        except Exception as e: print(f"    Batch {start} error: {e}")
-        print(f"    [{start+1}-{min(start+batch_size,len(items))}] done")
+                    if 0<=idx<len(batch) and a.get("impact") in ("利好","利空"):
+                        batch[idx]["impact"] = a["impact"]
+                        batch[idx]["ai_summary"] = a.get("summary","")
+                        batch[idx]["a_share"] = a.get("a_share","")
+                        batch[idx]["hk_stock"] = a.get("hk_stock","")
+                        batch[idx]["us_stock"] = a.get("us_stock","")
+                        batch[idx]["sectors"] = ", ".join(a.get("sectors",[]))
+                        batch[idx]["stocks"] = ", ".join(a.get("stocks",[]))
+                        kept.add(idx)
+                kept_batch = [batch[i] for i in range(len(batch)) if i in kept]
+                analyzed.extend(kept_batch)
+                print(f"    [{start+1}-{min(start+batch_size,len(items))}] kept {len(kept)}/{len(batch)}")
+        except Exception as e:
+            print(f"    Batch {start} error: {e}")
         if start+batch_size<len(items): time.sleep(1)
-    return items
 
-# ============================================================
-# PDF
-# ============================================================
+    removed = len(items) - len(analyzed)
+    print(f"  -> {len(analyzed)} market-relevant, {removed} noise removed")
+    return analyzed
 
-# ============================================================
-# LLM Filter + Summarize
-# ============================================================
 def build_pdf(items, date_str, path):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
