@@ -156,7 +156,8 @@ def analyze_impact(items):
 Output JSON array:
 [{{"idx":0,"impact":"利好/利空/中性","direction":"positive/negative/neutral",
    "sectors":["sector"],"stocks":["ticker"],
-   "reasoning":"1-sentence impact in Chinese"}}]
+   "reasoning":"1-sentence impact in Chinese",
+   "summary":"1-sentence news summary in Chinese"}}]
 
 Headlines:
 {lines}
@@ -177,6 +178,8 @@ Output ONLY JSON array."""
                         batch[idx]["sectors"]=", ".join(a.get("sectors",[]))
                         batch[idx]["stocks"]=", ".join(a.get("stocks",[]))
                         batch[idx]["reasoning"]=a.get("reasoning","")
+                        if a.get("summary"):
+                            batch[idx]["ai_summary"]=a.get("summary","")
         except Exception as e: print(f"    Batch {start} error: {e}")
         print(f"    [{start+1}-{min(start+batch_size,len(items))}] done")
         if start+batch_size<len(items): time.sleep(1)
@@ -189,98 +192,6 @@ Output ONLY JSON array."""
 # ============================================================
 # LLM Filter + Summarize
 # ============================================================
-def filter_and_summarize(items):
-    """Use LLM to filter noise and summarize key market impacts."""
-    api_key = os.environ.get("SF_API_KEY","")
-    if not api_key:
-        print("  ⚠️  SF_API_KEY not set — keeping all items without filtering")
-        return items, ""
-
-    print(f"  Filtering {len(items)} items for market relevance...")
-    
-    # Step 1: Filter — only keep market-impacting news
-    titles = "\n".join(f"[{i}] [{it['source_name']}] {it['title']}" for i,it in enumerate(items))
-    filter_prompt = f"""You are a senior financial analyst. Filter the following news headlines.
-Keep ONLY items that could impact capital markets (stocks, bonds, currencies, commodities).
-REMOVE: holiday notices, lifestyle, sports, entertainment, weather, local non-business news, 
-technical how-to articles, product promotions, celebrity news, general interest.
-For kept items, output their indices as JSON array: [0, 3, 7, ...]
-For items that are clearly market-moving, include a 1-sentence summary in Chinese.
-Output ONLY valid JSON.
-
-Headlines:
-{titles}
-
-Output format:
-{{"kept": [0, 3, 7], "summaries": {{"0": "summary", "3": "summary"}}}}"""
-
-    try:
-        resp = requests.post("https://api.siliconflow.cn/v1/chat/completions",
-            json={"model":"Qwen/Qwen2.5-7B-Instruct","messages":[{"role":"user","content":filter_prompt}],
-                  "temperature":0.3,"max_tokens":4000},
-            headers={"Authorization":f"Bearer {api_key}"}, timeout=90)
-        ct = resp.json()["choices"][0]["message"]["content"]
-        js = ct.find("{"); je = ct.rfind("}")+1
-        if js>=0 and je>js:
-            result = json.loads(ct[js:je])
-            kept_indices = set(result.get("kept", []))
-            summaries = result.get("summaries", {})
-            
-            filtered = []
-            for i, it in enumerate(items):
-                if i in kept_indices:
-                    sid = str(i)
-                    if sid in summaries:
-                        it["ai_summary"] = summaries[sid]
-                    filtered.append(it)
-            
-            removed = len(items) - len(filtered)
-            print(f"  Kept {len(filtered)}/{len(items)} items, removed {removed} noise")
-            return filtered, ""
-        else:
-            print("  LLM returned non-JSON, keeping all")
-            return items, ""
-    except Exception as e:
-        print(f"  Filter error: {e}, keeping all")
-        return items, ""
-
-
-def generate_briefing(items, date_str):
-    """Generate a daily market briefing summary."""
-    api_key = os.environ.get("SF_API_KEY","")
-    if not api_key:
-        return ""
-    
-    print(f"  Generating daily briefing...")
-    lines = "\n".join(f"[{i}] [{it['source_name']}] {it['title']}" for i,it in enumerate(items[:80]))
-    
-    prompt = f"""You are a senior financial analyst writing a morning briefing for investors.
-Based on these {len(items[:80])} news headlines, write a concise morning briefing in Chinese.
-
-Structure:
-1. 📊 市场概览 (1-2 sentences on overall market tone today)
-2. 🔥 重点新闻 (3-5 most important items with analysis)
-3. 📈 关注板块 (which sectors to watch today and why)
-4. ⚠️ 风险提示 (key risks)
-
-Keep it under 500 words. Professional tone.
-News date: {date_str}
-
-Headlines:
-{lines}"""
-
-    try:
-        resp = requests.post("https://api.siliconflow.cn/v1/chat/completions",
-            json={"model":"Qwen/Qwen2.5-7B-Instruct","messages":[{"role":"user","content":prompt}],
-                  "temperature":0.5,"max_tokens":1000},
-            headers={"Authorization":f"Bearer {api_key}"}, timeout=90)
-        briefing = resp.json()["choices"][0]["message"]["content"]
-        print(f"  Briefing: {len(briefing)} chars")
-        return briefing
-    except Exception as e:
-        print(f"  Briefing error: {e}")
-        return ""
-
 def build_pdf(items, date_str, path):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -445,15 +356,11 @@ def main():
     hits = len(set(i["source_id"] for i in items))
     print(f"  -> {len(items)} items from {hits}/{len(SOURCES)} sources")
 
-    # 1.5 Filter noise + summarize
-    print(f"\n[1.5/4] Filtering noise & summarizing...")
-    items, briefing = filter_and_summarize(items)
+
 
     # 2. Impact analysis
     print(f"\n[2/4] Market impact analysis...")
     items = analyze_impact(items)
-    if not briefing:
-        briefing = generate_briefing(items, today)
 
     # 3. PDF + DOCX
     print(f"\n[3/4] Generating files...")
@@ -475,10 +382,215 @@ def main():
         f.write(f"每日财经新闻 {today}\n")
         f.write(f"筛选后 {len(items)} 条重要新闻 (已过滤噪音)\n")
         f.write(f"覆盖 {hits}/{len(SOURCES)} 个来源\n\n")
-        if briefing:
-            f.write("=== 今日市场简报 ===\n")
-            f.write(briefing)
-            f.write("\n\n")
+        # Market briefing generated in PDF/DOCX
+        f.write("=== 分类统计 ===\n")
+        for cat in CAT_ORDER:
+            cnt = len([i for i in items if i["category"]==cat])
+            if cnt: f.write(f"{CAT_LABELS.get(cat,cat)}: {cnt} 条\n")
+
+    print(f"\n[{now_str()}] Done! → {out_dir}")
+
+if __name__ == "__main__":
+    main()
+
+# ============================================================
+# PDF
+# ============================================================
+
+# ============================================================
+# LLM Filter + Summarize
+# ============================================================
+def build_pdf(items, date_str, path):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib.colors import HexColor, grey
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    fn = "Helvetica"
+    for fp in ["/System/Library/Fonts/STHeiti Light.ttc","/System/Library/Fonts/PingFang.ttc"]:
+        if os.path.exists(fp):
+            try: pdfmetrics.registerFont(TTFont("CJK",fp)); fn="CJK"; break
+            except: pass
+    if fn=="Helvetica":
+        try:
+            from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+            pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light')); fn="STSong-Light"
+        except: pass
+
+    doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=2*cm,rightMargin=2*cm,topMargin=1.5*cm,bottomMargin=1.5*cm)
+    styles = getSampleStyleSheet()
+    ts = ParagraphStyle('T',parent=styles['Title'],fontName=fn,fontSize=16,leading=22,alignment=TA_CENTER,textColor=HexColor('#1a1a2e'))
+    ss = ParagraphStyle('S',parent=styles['Normal'],fontName=fn,fontSize=8,textColor=grey,alignment=TA_CENTER,spaceAfter=12)
+    hs = ParagraphStyle('H',parent=styles['Heading2'],fontName=fn,fontSize=11,leading=16,textColor=HexColor('#e94560'),spaceBefore=12,spaceAfter=4)
+    bs = ParagraphStyle('B',parent=styles['Normal'],fontName=fn,fontSize=8,leading=12,spaceAfter=2)
+    rs = ParagraphStyle('R',parent=styles['Normal'],fontName=fn,fontSize=6,leading=8,textColor=grey)
+
+    story = [Spacer(1,0.5*cm), Paragraph("每日财经新闻聚合报告",ts),
+             Paragraph(f"日期: {date_str}　新闻: {len(items)} 条",ss),
+             HRFlowable(width="100%",thickness=1,color=HexColor('#e94560')), Spacer(1,8)]
+    by_cat = {}; [by_cat.setdefault(it["category"],[]).append(it) for it in items]
+    for cat in CAT_ORDER:
+        if cat not in by_cat: continue
+        story.append(Paragraph(CAT_LABELS.get(cat,cat),hs))
+        for it in by_cat[cat][:6]:
+            t = it["title"].replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            imp = it.get("impact","")
+            if imp: t+=f' <font color="#22c55e">【{imp}】</font>' if "利好" in imp else (f' <font color="#ef4444">【{imp}】</font>' if "利空" in imp else f' 【{imp}】')
+            lnk = f'<font color="blue"><u><a href="{it.get("url","")}">{t}</a></u></font>' if it.get("url") else t
+            story.append(Paragraph(lnk,bs))
+            src = it["source_name"]
+            if it.get("ai_summary"): 
+                story.append(Paragraph(f"📝 {it['ai_summary']}",rs))
+            if it.get("reasoning"): src+=f" | 💡 {it['reasoning']}"
+            if it.get("stocks"): src+=f" | 📈 {it['stocks']}"
+            story.append(Paragraph(src,rs))
+            story.append(Spacer(1,4))
+        story.append(Spacer(1,4))
+    story.append(HRFlowable(width="100%",thickness=0.5,color=grey))
+    story.append(Paragraph("自动生成 · Financial News Collector · 仅供参考",rs))
+    doc.build(story)
+
+# ============================================================
+# DOCX
+# ============================================================
+def build_docx(items, date_str, path):
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    doc = Document()
+    t = doc.add_heading('每日财经新闻聚合报告',0); t.alignment=WD_ALIGN_PARAGRAPH.CENTER
+    p = doc.add_paragraph(f'日期: {date_str}　新闻: {len(items)} 条'); p.alignment=WD_ALIGN_PARAGRAPH.CENTER
+    by_cat = {}; [by_cat.setdefault(it["category"],[]).append(it) for it in items]
+    for cat in CAT_ORDER:
+        if cat not in by_cat: continue
+        doc.add_heading(CAT_LABELS.get(cat,cat),1)
+        for it in by_cat[cat][:6]:
+            imp = it.get("impact","")
+            if imp:
+                ip = doc.add_paragraph(f'【{imp}】')
+                ip.runs[0].font.size=Pt(9)
+                ip.runs[0].font.color.rgb = RGBColor(34,197,94) if "利好" in imp else (RGBColor(239,68,68) if "利空" in imp else RGBColor(136,136,136))
+            pp = doc.add_paragraph(); pp.paragraph_format.space_after=Pt(2)
+            r = pp.add_run(f'• {it["title"]}'); r.bold=True; r.font.size=Pt(9)
+            ps = doc.add_paragraph(f'  {it["source_name"]}'); ps.runs[0].font.size=Pt(7); ps.runs[0].font.color.rgb=RGBColor(160,160,160)
+            if it.get("reasoning"):
+                pr = doc.add_paragraph(f'  💡 {it["reasoning"]}'); pr.runs[0].font.size=Pt(8)
+            if it.get("stocks"):
+                pk = doc.add_paragraph(f'  📈 {it["stocks"]}'); pk.runs[0].font.size=Pt(8)
+    doc.save(path)
+
+# ============================================================
+# Douyin Images
+# ============================================================
+def build_douyin(items, date_str, out_dir):
+    from PIL import Image, ImageDraw, ImageFont
+    W,H = 1080,1920
+    paths = []
+    for fp in ["/System/Library/Fonts/STHeiti Light.ttc","/System/Library/Fonts/PingFang.ttc"]:
+        if os.path.exists(fp):
+            try: tf=ImageFont.truetype(fp,56); bf=ImageFont.truetype(fp,32); sf=ImageFont.truetype(fp,24); break
+            except: pass
+    else: tf=bf=sf=ImageFont.load_default()
+    BG,ACC,GOLD,WH,LG,CD = (18,18,36),(233,69,96),(255,200,60),(255,255,255),(180,180,190),(30,30,55)
+    # Cover
+    img = Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(img)
+    d.rectangle([(0,0),(W,8)],fill=ACC)
+    d.text((80,200),date_str,fill=LG,font=sf)
+    tt="每日财经要闻"; tw=d.textbbox((0,0),tt,font=tf)[2]; d.text(((W-tw)//2,280),tt,fill=WH,font=tf)
+    sub=f"共 {len(items)} 条 · {len(set(i['source_id'] for i in items))} 个来源"
+    sw=d.textbbox((0,0),sub,font=bf)[2]; d.text(((W-sw)//2,380),sub,fill=GOLD,font=bf)
+    d.line([(340,460),(740,460)],fill=ACC,width=3)
+    by_cat={}; [by_cat.setdefault(it["category"],[]).append(it) for it in items]
+    y=540
+    for cat in CAT_ORDER:
+        if cat in by_cat: d.text((120,y),f"{CAT_LABELS.get(cat,cat)}　{len(by_cat[cat])} 条",fill=LG,font=sf); y+=50
+    cv=os.path.join(out_dir,"douyin_00_cover.png"); img.save(cv,quality=95); paths.append(cv)
+    # Category slides
+    si=1
+    for cat in CAT_ORDER:
+        if cat not in by_cat: continue
+        ci=by_cat[cat][:5]
+        img=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(img)
+        d.rectangle([(0,0),(W,160)],fill=CD)
+        d.text((80,40),CAT_LABELS.get(cat,cat),fill=ACC,font=tf)
+        d.text((80,110),f"{len(ci)} 条重要新闻",fill=LG,font=sf)
+        y=220
+        for it in ci:
+            ch=280
+            if y+ch>H-100: ch=H-100-y
+            d.rectangle([(40,y),(W-40,y+ch)],fill=CD,outline=(60,60,80))
+            imp=it.get("impact","")
+            yo=0
+            if imp:
+                ic=(34,197,94) if "利好" in imp else ((239,68,68) if "利空" in imp else LG)
+                d.text((80,y+20),f"【{imp}】",fill=ic,font=sf); yo=50
+            d.text((80,y+20),it["source_name"],fill=GOLD,font=sf)
+            d.text((80,y+60+yo),textwrap.fill(it["title"],width=30),fill=WH,font=bf)
+            y+=ch+30
+        fp=os.path.join(out_dir,f"douyin_{si:02d}_{cat}.png"); img.save(fp,quality=95); paths.append(fp); si+=1
+    return paths
+
+# ============================================================
+# Main
+# ============================================================
+def main():
+    print(f"[{now_str()}] Local Daily Brief starting...")
+    yesterday = (now_bj()-timedelta(days=1)).strftime("%Y-%m-%d")
+    today = now_bj().strftime("%Y-%m-%d")
+    out_dir = os.path.join(DESKTOP, "每日财经新闻", today)
+    os.makedirs(out_dir, exist_ok=True)
+    print(f"  Output: {out_dir}")
+
+    # 1. Search
+    print(f"\n[1/4] Searching {len(SOURCES)} sources...")
+    items = []
+    for i, src in enumerate(SOURCES):
+        print(f"  [{i+1}/{len(SOURCES)}] {src['name']:<12s} ", end="", flush=True)
+        raw = google_news_search(src["query"], max_results=5)
+        cnt = 0
+        for r in raw:
+            t = r.get("title",""); h = r.get("href",""); b = r.get("body","")
+            if t:
+                items.append({"id":gen_id(src["id"],t,h),"title":t[:200],"url":h,"summary":b[:300],
+                              "source_id":src["id"],"source_name":src["name"],
+                              "category":src["cat"],"lang":src["lang"],"reliability":src["rel"]})
+                cnt += 1
+        print(f"{cnt}")
+        if i < len(SOURCES)-1: time.sleep(2)
+    hits = len(set(i["source_id"] for i in items))
+    print(f"  -> {len(items)} items from {hits}/{len(SOURCES)} sources")
+
+
+
+    # 2. Impact analysis
+    print(f"\n[2/4] Market impact analysis...")
+    items = analyze_impact(items)
+
+    # 3. PDF + DOCX
+    print(f"\n[3/4] Generating files...")
+    pdf_path = os.path.join(out_dir, f"每日财经新闻_{today}.pdf")
+    build_pdf(items, today, pdf_path)
+    print(f"  PDF: {os.path.getsize(pdf_path)/1024:.1f} KB")
+    docx_path = os.path.join(out_dir, f"每日财经新闻_{today}.docx")
+    build_docx(items, today, docx_path)
+    print(f"  DOCX: {os.path.getsize(docx_path)/1024:.1f} KB")
+
+    # 4. Douyin
+    dy_dir = os.path.join(out_dir, "douyin")
+    os.makedirs(dy_dir, exist_ok=True)
+    dy_paths = build_douyin(items, today, dy_dir)
+    print(f"  Douyin: {len(dy_paths)} slides")
+
+    # Summary
+    with open(os.path.join(out_dir,"summary.txt"),"w") as f:
+        f.write(f"每日财经新闻 {today}\n")
+        f.write(f"筛选后 {len(items)} 条重要新闻 (已过滤噪音)\n")
+        f.write(f"覆盖 {hits}/{len(SOURCES)} 个来源\n\n")
+        # Market briefing generated in PDF/DOCX
         f.write("=== 分类统计 ===\n")
         for cat in CAT_ORDER:
             cnt = len([i for i in items if i["category"]==cat])
