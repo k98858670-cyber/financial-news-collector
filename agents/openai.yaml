@@ -1,0 +1,3 @@
+interface:
+  display_name: "Financial News Collector"
+  short_description: "Auto daily brief via GitHub Actions to phone"

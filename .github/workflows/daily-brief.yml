@@ -1,0 +1,42 @@
+name: Daily Financial Brief
+
+on:
+  schedule:
+    # 00:40 UTC = 08:40 Beijing time
+    - cron: "40 0 * * *"
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install duckduckgo_search
+
+      - name: Run daily brief
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python3 scripts/gh_daily_brief.py
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brief-log
+          path: |
+            *.log
+            *.txt
