@@ -5,23 +5,18 @@
 <dict>
     <key>Label</key>
     <string>com.codex.daily-financial-brief</string>
-
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>-l</string>
-        <string>-c</string>
-        <string>FINANCE_BRIEF_EMAIL="${FINANCE_BRIEF_EMAIL}" FINANCE_EMAIL_SENDER="${FINANCE_EMAIL_SENDER}" FINANCE_EMAIL_PASSWORD="${FINANCE_EMAIL_PASSWORD}" /Users/mofurong/.codex/skills/financial-news-collector/scripts/daily_brief.sh</string>
+        <string>/usr/bin/python3</string>
+        <string>/Users/mofurong/.codex/skills/financial-news-collector/scripts/local_daily_brief.py</string>
     </array>
-
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
         <integer>8</integer>
         <key>Minute</key>
-        <integer>40</integer>
+        <integer>20</integer>
     </dict>
-
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -29,17 +24,11 @@
         <key>HOME</key>
         <string>/Users/mofurong</string>
     </dict>
-
     <key>StandardOutPath</key>
-    <string>/Users/mofurong/Documents/每日财经新闻/daily_brief_stdout.log</string>
-
+    <string>/Users/mofurong/Desktop/每日财经新闻/daily_brief.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/mofurong/Documents/每日财经新闻/daily_brief_stderr.log</string>
-
+    <string>/Users/mofurong/Desktop/每日财经新闻/daily_brief_error.log</string>
     <key>RunAtLoad</key>
-    <false/>
-
-    <key>KeepAlive</key>
     <false/>
 </dict>
 </plist>

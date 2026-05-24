@@ -214,9 +214,12 @@ def search_all(since_date, max_per=5):
             href = r.get("href", "")
             body = r.get("body", "")
             if title:
+                # Strip HTML tags from title/body
+                clean_title = re.sub(r'<[^>]+>', '', title)[:200]
+                clean_body = re.sub(r'<[^>]+>', '', body)[:300]
                 all_items.append({
                     "id": gen_id(src["id"], title, href),
-                    "title": title[:200], "url": href, "summary": body[:300],
+                    "title": clean_title, "url": href, "summary": clean_body,
                     "source_id": src["id"], "source_name": src["name"],
                     "category": src["cat"], "lang": src["lang"], "reliability": src["rel"],
                 })
