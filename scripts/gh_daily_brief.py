@@ -6,7 +6,7 @@
 Runs at 08:40 Beijing time daily on GitHub Actions.
 
 Pipeline:
-  1. Search 41 sources via DuckDuckGo (POST, Lite fallback)
+  1. Search 41 sources via Google News RSS (POST, Lite fallback)
   2. LLM impact analysis via SiliconFlow (利好/利空/板块/个股)
   3. Generate PDF report (ReportLab + Noto Sans CJK)
   4. Generate DOCX report (python-docx)
@@ -24,6 +24,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
+import urllib.parse
 
 import requests
 
@@ -136,71 +137,60 @@ def gen_id(*parts):
     return hashlib.md5(":".join(parts).encode()).hexdigest()[:12]
 
 # ============================================================
-# DDG Search
+# Google News RSS Search
 # ============================================================
 
-def ddg_search(query, max_results=5, retries=3):
-    """Search DuckDuckGo with retry and fallback."""
+def google_news_search(query, max_results=8, retries=3):
+    """Search Google News RSS — reliable globally, never blocked."""
+    import xml.etree.ElementTree as ET
     sess = get_session()
+    # Use Chinese locale for Chinese queries, English for English
+    lang = "zh-CN" if any('一' <= c <= '鿿' for c in query) else "en-US"
+    gl = "CN" if lang == "zh-CN" else "US"
+    url = f"https://news.google.com/rss/search?q={quote(query)}&hl={lang}&gl={gl}&ceid={gl}:{lang.replace('-','')}"
+
     for attempt in range(retries):
         try:
-            # Primary: DDG HTML POST
-            r = sess.post("https://html.duckduckgo.com/html/",
-                          data={"q": query}, timeout=20)
-            if r.status_code == 200 and len(r.text) > 500:
-                results = _parse_ddg_html(r.text, max_results)
-                if results:
-                    return results
+            r = sess.get(url, timeout=20)
+            if r.status_code != 200:
+                continue
+            root = ET.fromstring(r.text)
+            items = root.findall(".//item")
+            results = []
+            for item in items[:max_results]:
+                title_el = item.find("title")
+                link_el = item.find("link")
+                desc_el = item.find("description")
+                pub_el = item.find("pubDate")
+                source_el = item.find("source")
+
+                title = title_el.text.strip() if title_el is not None and title_el.text else ""
+                link = link_el.text.strip() if link_el is not None and link_el.text else ""
+                desc = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
+                pub = pub_el.text.strip() if pub_el is not None and pub_el.text else ""
+                source = source_el.text.strip() if source_el is not None and source_el.text else ""
+
+                # Clean Google News redirect URL to get real URL
+                if "news.google.com" in link:
+                    # Try to extract real URL from query params
+                    import urllib.parse
+                    parsed = urllib.parse.urlparse(link)
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    real_url = qs.get("url", [link])[0]
+                    link = real_url
+
+                if title:
+                    results.append({
+                        "title": title, "href": link, "body": desc,
+                        "published": pub, "source": source
+                    })
+            if results:
+                return results
         except Exception:
             pass
-
-        try:
-            # Fallback: DDG Lite
-            r = sess.post("https://lite.duckduckgo.com/lite/",
-                          data={"q": query}, timeout=20)
-            if r.status_code == 200:
-                results = _parse_ddg_lite(r.text, max_results)
-                if results:
-                    return results
-        except Exception:
-            pass
-
         if attempt < retries - 1:
-            time.sleep(2 * (attempt + 1))
-
+            time.sleep(2)
     return []
-
-
-def _parse_ddg_html(html, max_results):
-    results = []
-    links = re.findall(
-        r'<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
-        html, re.DOTALL | re.IGNORECASE)
-    snippets = re.findall(
-        r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
-        html, re.DOTALL | re.IGNORECASE)
-    for i, (href, title_raw) in enumerate(links[:max_results]):
-        title = re.sub(r'<[^>]+>', '', title_raw).strip()
-        if not title or 'uddg=' in href.lower():
-            continue
-        snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip() if i < len(snippets) else ""
-        results.append({"title": title, "href": href.strip(), "body": snippet})
-    return results
-
-
-def _parse_ddg_lite(html, max_results):
-    results = []
-    rows = re.findall(r'<tr[^>]*class="result-snippet"[^>]*>(.*?)</tr>', html, re.DOTALL)
-    for row in rows[:max_results]:
-        link_m = re.search(r'href="([^"]+)"', row)
-        title_m = re.search(r'<a[^>]*>(.*?)</a>', row)
-        snippet_m = re.search(r'class="result-snippet">(.*?)</td>', row, re.DOTALL)
-        if title_m:
-            title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
-            href = link_m.group(1) if link_m else ""
-            snippet = re.sub(r'<[^>]+>', '', snippet_m.group(1)).strip() if snippet_m else ""
-            results.append({"title": title, "href": href, "body": snippet})
-    return results
 
 
 def search_all(since_date, max_per=5):
@@ -213,7 +203,7 @@ def search_all(since_date, max_per=5):
         query = src["query"]
         print(f"  [{i+1}/{total}] {src['name']:<12s} ", end="", flush=True)
         try:
-            raw = ddg_search(query, max_results=max_per)
+            raw = google_news_search(query, max_results=max_per)
         except Exception as e:
             raw = []
             failures.append(src["name"])
@@ -598,7 +588,7 @@ def main():
     print(f"  Sources: {len(SOURCES)}")
 
     # ---- 1. Search ----
-    print(f"\n[1/5] Searching {len(SOURCES)} sources (DDG)...")
+    print(f"\n[1/5] Searching {len(SOURCES)} sources (Google News)...")
     items, failures = search_all(since_date=yesterday, max_per=5)
     hits = len(set(i["source_id"] for i in items))
     print(f"  -> {len(items)} items from {hits}/{len(SOURCES)} sources"
