@@ -308,16 +308,16 @@ def build_pdf(items, date_str, pdf_path):
 
 
 def analyze_impact(items):
-    """Use Groq LLM to analyze capital market impact of each news item.
+    """Use SiliconFlow LLM to analyze capital market impact of each news item.
     Returns items enriched with impact, sectors, stocks, reasoning."""
     import urllib.request as urlreq
 
-    api_key = os.environ.get("GROQ_API_KEY", "")
+    api_key = os.environ.get("SF_API_KEY", "")
     if not api_key:
-        print("  ⚠️  GROQ_API_KEY not set, skipping impact analysis")
+        print("  ⚠️  SF_API_KEY not set, skipping impact analysis")
         return items
 
-    print(f"  Analyzing {len(items)} items with Groq LLM...")
+    print(f"  Analyzing {len(items)} items with SiliconFlow LLM...")
 
     # Process in batches to stay within token limits
     batch_size = 20
@@ -344,13 +344,13 @@ News:
 Output ONLY valid JSON array, no other text."""
 
         payload = json.dumps({
-            "model": "llama-3.3-70b-versatile",
+            "model": "Qwen/Qwen2.5-7B-Instruct",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
             "max_tokens": 4000,
         }).encode()
 
-        req = urlreq.Request("https://api.groq.com/openai/v1/chat/completions",
+        req = urlreq.Request("https://api.siliconflow.cn/openai/v1/chat/completions",
                              data=payload,
                              headers={"Authorization": f"Bearer {api_key}",
                                       "Content-Type": "application/json"})
@@ -656,7 +656,7 @@ def main():
     hits = len(set(i["source_id"] for i in items))
     print(f"  -> {len(items)} items from {hits}/{len(SOURCES)} sources")
 
-    print(f"\n[2/5] Analyzing capital market impact (Groq LLM)...")
+    print(f"\n[2/5] Analyzing capital market impact (SiliconFlow LLM)...")
     items = analyze_impact(items)
     analyzed_count = sum(1 for i in items if i.get("impact"))
 
