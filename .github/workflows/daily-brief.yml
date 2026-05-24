@@ -19,19 +19,17 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install system deps
+      - name: Install CJK fonts (for PDF)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
 
       - name: Install Python deps
-        run: |
-          pip install duckduckgo_search reportlab
+        run: pip install reportlab
 
       - name: Run daily brief
         env:
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        run: |
-          python3 scripts/gh_daily_brief.py
+        run: python3 scripts/gh_daily_brief.py
