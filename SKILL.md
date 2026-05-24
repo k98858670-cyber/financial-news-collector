@@ -164,66 +164,32 @@ The time constraint is embedded in:
 - Monthly policy review: 
 
 
-## Daily Automated Brief (macOS)
+## ⏰ Daily Auto-Brief (08:20, macOS launchd)
 
-### One-time setup
+### One-time install
+```bash
+cp ~/.codex/skills/financial-news-collector/scripts/com.codex.daily-financial-brief.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.codex.daily-financial-brief.plist
+```
 
-
-
-### What happens every morning
-
-1. **08:40** —  triggers automatically
-2. Generates 39 search queries targeting all sources (yesterday news)
-3. Fetches directly available RSS feeds (CNBC etc.)
-4. Exports PDF to 
-5. Writes  listing sources that need anysearch completion
-
-### After you open Codex
-
-Say "完成今日财经简报" — Codex reads , runs anysearch on pending sources,
-appends results to , and re-generates the PDF with full coverage.
+### Every morning at 08:20
+1. Google News RSS searches 40 sources
+2. SiliconFlow LLM analyzes market impact (if SF_API_KEY set)
+3. Saves to `~/Desktop/每日财经新闻/YYYY-MM-DD/`:
+   - `每日财经新闻_日期.pdf`
+   - `每日财经新闻_日期.docx`
+   - `summary.txt`
+   - `douyin/` — carousel images for posting
 
 ### Manual run
-
-==============================================
- Daily Financial News Brief
- Date: 2026-05-24 16:17:07
- Target: yesterday (2026-05-23)
- Output: /Users/mofurong/Documents/每日财经新闻/2026-05-24
-==============================================
-
-[1/4] Generating search queries for all sources...
-Generated 39 queries (今日) -> /Users/mofurong/Documents/每日财经新闻/2026-05-24/queries.json
-  -> 39 queries generated
-
-[2/4] Direct fetching (RSS + API from cls/reuters/cnbc)...
-[2026-05-24 16:17:07] Starting RSS fetch...
-  Since: 2026-05-23
-
-  [CNBC] CNBC RSS ...
-    Got 13 items
-
-[2026-05-24 16:17:08] Done: 13 items -> /Users/mofurong/Documents/每日财经新闻/2026-05-24/results.json
-  ⚠️  40 sources pending (need anysearch)
-  Pending: 财联社, 新浪财经, 东方财富, 华尔街见闻, 证券时报, 中国证券报, 第一财经, 21世纪经济报道...
-
-[3/4] Generating PDF report...
-Using font: STSong-Light
-PDF generated: /Users/mofurong/Documents/每日财经新闻/2026-05-24/每日财经新闻_2026-05-24.pdf (6.9 KB)
-
-[4/4] Checking pending sources...
-  -> 40 sources pending (see pending.md)
-
-==============================================
- ✅ Brief complete!
- PDF : /Users/mofurong/Documents/每日财经新闻/2026-05-24/每日财经新闻_2026-05-24.pdf
- Data: /Users/mofurong/Documents/每日财经新闻/2026-05-24/results.json (13 items)
- Pending: 40 sources
-==============================================
+```bash
+python3 ~/.codex/skills/financial-news-collector/scripts/local_daily_brief.py
+```
 
 ### Disable
-
-
+```bash
+launchctl unload ~/Library/LaunchAgents/com.codex.daily-financial-brief.plist
+```
 
 ## Source Configuration
 
