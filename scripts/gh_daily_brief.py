@@ -285,7 +285,73 @@ def build_pdf(items, date_str, pdf_path):
     doc.build(story)
 
 
-def send_email(sender, password, to, subject, body, pdf_path=None):
+
+def build_docx(items, date_str, docx_path):
+    """Generate a formatted DOCX report."""
+    from docx import Document
+    from docx.shared import Pt, Cm, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.size = Pt(10)
+    style.font.name = 'Arial'
+
+    # Title
+    title = doc.add_heading(f'每日财经新闻聚合报告', level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p = doc.add_paragraph(f'日期: {date_str}　|　新闻: {len(items)} 条　|　自动生成')
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.runs[0].font.size = Pt(9)
+    p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+    doc.add_paragraph()
+
+    by_cat = {}
+    for item in items:
+        by_cat.setdefault(item["category"], []).append(item)
+    cat_order = ["breaking_news", "cn_government", "intl_government", "comprehensive",
+                 "global_news", "global_markets", "investment_research", "domestic_research"]
+
+    for cat in cat_order:
+        if cat not in by_cat:
+            continue
+        doc.add_heading(CAT_LABELS.get(cat, cat), level=1)
+        for item in by_cat[cat][:6]:
+            title_text = item["title"]
+            url = item.get("url", "")
+            source = item["source_name"]
+            summary = item.get("summary", "")
+
+            # Title as bold hyperlink
+            p = doc.add_paragraph()
+            p.paragraph_format.space_after = Pt(2)
+            run = p.add_run(f'• {title_text}')
+            run.bold = True
+            run.font.size = Pt(9)
+            if url:
+                run.font.color.rgb = RGBColor(0, 102, 204)
+
+            # Source
+            p2 = doc.add_paragraph(f'  {source}')
+            p2.paragraph_format.space_after = Pt(2)
+            p2.runs[0].font.size = Pt(7)
+            p2.runs[0].font.color.rgb = RGBColor(160, 160, 160)
+
+            # Summary
+            if summary and summary != title_text:
+                p3 = doc.add_paragraph(f'  {summary[:200]}')
+                p3.paragraph_format.space_after = Pt(6)
+                p3.runs[0].font.size = Pt(8)
+
+    doc.add_paragraph()
+    p = doc.add_paragraph('本报告由 Financial News Collector 自动生成 · GitHub Actions · 仅供参考')
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.runs[0].font.size = Pt(7)
+    p.runs[0].font.color.rgb = RGBColor(160, 160, 160)
+
+    doc.save(docx_path)
+
+def send_email(sender, password, to, subject, body, attachments=None):
     domain = sender.split("@")[-1].lower()
     host, port, ssl = SMTP_CFG.get(domain, (f"smtp.{domain}", 465, True))
 
@@ -295,14 +361,16 @@ def send_email(sender, password, to, subject, body, pdf_path=None):
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    if pdf_path and os.path.exists(pdf_path):
-        with open(pdf_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition",
-                        f'attachment; filename="{os.path.basename(pdf_path)}"')
-        msg.attach(part)
+    if attachments:
+        for att_path in attachments:
+            if att_path and os.path.exists(att_path):
+                with open(att_path, "rb") as f:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(f.read())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition",
+                                f'attachment; filename="{os.path.basename(att_path)}"')
+                msg.attach(part)
 
     if ssl:
         server = smtplib.SMTP_SSL(host, port, timeout=30)
@@ -335,6 +403,11 @@ def main():
     build_pdf(items, today_str, pdf_path)
     print(f"  PDF: {pdf_path} ({os.path.getsize(pdf_path)/1024:.1f} KB)")
 
+    # Generate DOCX
+    docx_path = os.path.join(tempfile.gettempdir(), f"每日财经新闻_{today_str}.docx")
+    build_docx(items, today_str, docx_path)
+    print(f"  DOCX: {docx_path} ({os.path.getsize(docx_path)/1024:.1f} KB)")
+
     print(f"\n[4/4] Sending email...")
     sender = os.environ.get("EMAIL_SENDER", "")
     password = os.environ.get("EMAIL_PASSWORD", "")
@@ -342,7 +415,7 @@ def main():
 
     if sender and password:
         send_email(sender, password, recipient,
-                   f"📰 每日财经要闻 {today_str}", report, pdf_path)
+                   f"📰 每日财经要闻 {today_str}", report, [pdf_path, docx_path])
     else:
         print("  SKIP: no email config")
         print(report[:500])
