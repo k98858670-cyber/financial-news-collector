@@ -72,6 +72,21 @@ git push -u origin main
 
 ---
 
+
+---
+
+## 第 5.5 步：设置 SiliconFlow API（资本市场影响分析）
+
+1. 浏览器打开 https://siliconflow.cn ，手机号注册登录
+2. 左侧菜单点 **API 密钥** → **新建 API 密钥** → 复制 `sk-` 开头的 key
+3. 打开 GitHub Secrets 页面，点 **New repository secret**：
+   - Name：`SF_API_KEY`
+   - Secret：粘贴 `sk-...`
+   - 点 Add secret
+4. 这步可选但不做的话邮件里没有【利好/利空】分析
+
+---
+
 ## 第 5 步：启用自动运行（30 秒）
 
 1. 打开 https://github.com/YOUR_USERNAME/financial-news-collector/actions

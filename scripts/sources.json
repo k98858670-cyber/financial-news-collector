@@ -501,19 +501,6 @@
           "description": "European Commission，欧盟行政机构。反补贴调查、碳边境税(CBAM)、数字服务法案等政策影响中国出口企业。"
         },
         {
-          "id": "boe",
-          "name": "英国央行",
-          "fetch_method": "search",
-          "url": "https://www.bankofengland.co.uk/",
-          "search_query": "site:bankofengland.co.uk monetary policy report",
-          "category": "intl_government",
-          "subcategory": "central_bank",
-          "lang": "en",
-          "reliability": "highest",
-          "update_frequency": "event_driven",
-          "description": "Bank of England，英国央行。利率政策影响英镑汇率和全球金融市场情绪。"
-        },
-        {
           "id": "boj",
           "name": "日本央行",
           "fetch_method": "search",

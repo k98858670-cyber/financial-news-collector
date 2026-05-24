@@ -1,7 +1,7 @@
 ---
 name: financial-news-collector
 description: >
-  Collect real-time financial news and government policy from 35+ authoritative Chinese
+  Collect real-time financial news and government policy from 40 authoritative Chinese
   and international sources. Covers: Chinese media (财联社, 新浪财经, 东方财富, 华尔街见闻,
   证券时报, 中国证券报, 第一财经, 21世纪经济报道), global investment bank research
   (高盛, 摩根大通, 摩根士丹利), domestic brokerage research (中信, 中金, 华泰, 国泰君安),
@@ -204,7 +204,7 @@ Generated 39 queries (今日) -> /Users/mofurong/Documents/每日财经新闻/20
     Got 13 items
 
 [2026-05-24 16:17:08] Done: 13 items -> /Users/mofurong/Documents/每日财经新闻/2026-05-24/results.json
-  ⚠️  38 sources pending (need anysearch)
+  ⚠️  40 sources pending (need anysearch)
   Pending: 财联社, 新浪财经, 东方财富, 华尔街见闻, 证券时报, 中国证券报, 第一财经, 21世纪经济报道...
 
 [3/4] Generating PDF report...
@@ -212,13 +212,13 @@ Using font: STSong-Light
 PDF generated: /Users/mofurong/Documents/每日财经新闻/2026-05-24/每日财经新闻_2026-05-24.pdf (6.9 KB)
 
 [4/4] Checking pending sources...
-  -> 38 sources pending (see pending.md)
+  -> 40 sources pending (see pending.md)
 
 ==============================================
  ✅ Brief complete!
  PDF : /Users/mofurong/Documents/每日财经新闻/2026-05-24/每日财经新闻_2026-05-24.pdf
  Data: /Users/mofurong/Documents/每日财经新闻/2026-05-24/results.json (13 items)
- Pending: 38 sources
+ Pending: 40 sources
 ==============================================
 
 ### Disable
