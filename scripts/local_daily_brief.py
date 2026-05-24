@@ -185,6 +185,102 @@ Output ONLY JSON array."""
 # ============================================================
 # PDF
 # ============================================================
+
+# ============================================================
+# LLM Filter + Summarize
+# ============================================================
+def filter_and_summarize(items):
+    """Use LLM to filter noise and summarize key market impacts."""
+    api_key = os.environ.get("SF_API_KEY","")
+    if not api_key:
+        print("  ⚠️  SF_API_KEY not set — keeping all items without filtering")
+        return items, ""
+
+    print(f"  Filtering {len(items)} items for market relevance...")
+    
+    # Step 1: Filter — only keep market-impacting news
+    titles = "\n".join(f"[{i}] [{it['source_name']}] {it['title']}" for i,it in enumerate(items))
+    filter_prompt = f"""You are a senior financial analyst. Filter the following news headlines.
+Keep ONLY items that could impact capital markets (stocks, bonds, currencies, commodities).
+REMOVE: holiday notices, lifestyle, sports, entertainment, weather, local non-business news, 
+technical how-to articles, product promotions, celebrity news, general interest.
+For kept items, output their indices as JSON array: [0, 3, 7, ...]
+For items that are clearly market-moving, include a 1-sentence summary in Chinese.
+Output ONLY valid JSON.
+
+Headlines:
+{titles}
+
+Output format:
+{{"kept": [0, 3, 7], "summaries": {{"0": "summary", "3": "summary"}}}}"""
+
+    try:
+        resp = requests.post("https://api.siliconflow.cn/v1/chat/completions",
+            json={"model":"Qwen/Qwen2.5-7B-Instruct","messages":[{"role":"user","content":filter_prompt}],
+                  "temperature":0.3,"max_tokens":4000},
+            headers={"Authorization":f"Bearer {api_key}"}, timeout=90)
+        ct = resp.json()["choices"][0]["message"]["content"]
+        js = ct.find("{"); je = ct.rfind("}")+1
+        if js>=0 and je>js:
+            result = json.loads(ct[js:je])
+            kept_indices = set(result.get("kept", []))
+            summaries = result.get("summaries", {})
+            
+            filtered = []
+            for i, it in enumerate(items):
+                if i in kept_indices:
+                    sid = str(i)
+                    if sid in summaries:
+                        it["ai_summary"] = summaries[sid]
+                    filtered.append(it)
+            
+            removed = len(items) - len(filtered)
+            print(f"  Kept {len(filtered)}/{len(items)} items, removed {removed} noise")
+            return filtered, ""
+        else:
+            print("  LLM returned non-JSON, keeping all")
+            return items, ""
+    except Exception as e:
+        print(f"  Filter error: {e}, keeping all")
+        return items, ""
+
+
+def generate_briefing(items, date_str):
+    """Generate a daily market briefing summary."""
+    api_key = os.environ.get("SF_API_KEY","")
+    if not api_key:
+        return ""
+    
+    print(f"  Generating daily briefing...")
+    lines = "\n".join(f"[{i}] [{it['source_name']}] {it['title']}" for i,it in enumerate(items[:80]))
+    
+    prompt = f"""You are a senior financial analyst writing a morning briefing for investors.
+Based on these {len(items[:80])} news headlines, write a concise morning briefing in Chinese.
+
+Structure:
+1. 📊 市场概览 (1-2 sentences on overall market tone today)
+2. 🔥 重点新闻 (3-5 most important items with analysis)
+3. 📈 关注板块 (which sectors to watch today and why)
+4. ⚠️ 风险提示 (key risks)
+
+Keep it under 500 words. Professional tone.
+News date: {date_str}
+
+Headlines:
+{lines}"""
+
+    try:
+        resp = requests.post("https://api.siliconflow.cn/v1/chat/completions",
+            json={"model":"Qwen/Qwen2.5-7B-Instruct","messages":[{"role":"user","content":prompt}],
+                  "temperature":0.5,"max_tokens":1000},
+            headers={"Authorization":f"Bearer {api_key}"}, timeout=90)
+        briefing = resp.json()["choices"][0]["message"]["content"]
+        print(f"  Briefing: {len(briefing)} chars")
+        return briefing
+    except Exception as e:
+        print(f"  Briefing error: {e}")
+        return ""
+
 def build_pdf(items, date_str, path):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -228,6 +324,8 @@ def build_pdf(items, date_str, path):
             lnk = f'<font color="blue"><u><a href="{it.get("url","")}">{t}</a></u></font>' if it.get("url") else t
             story.append(Paragraph(lnk,bs))
             src = it["source_name"]
+            if it.get("ai_summary"): 
+                story.append(Paragraph(f"📝 {it['ai_summary']}",rs))
             if it.get("reasoning"): src+=f" | 💡 {it['reasoning']}"
             if it.get("stocks"): src+=f" | 📈 {it['stocks']}"
             story.append(Paragraph(src,rs))
@@ -347,9 +445,15 @@ def main():
     hits = len(set(i["source_id"] for i in items))
     print(f"  -> {len(items)} items from {hits}/{len(SOURCES)} sources")
 
+    # 1.5 Filter noise + summarize
+    print(f"\n[1.5/4] Filtering noise & summarizing...")
+    items, briefing = filter_and_summarize(items)
+
     # 2. Impact analysis
     print(f"\n[2/4] Market impact analysis...")
     items = analyze_impact(items)
+    if not briefing:
+        briefing = generate_briefing(items, today)
 
     # 3. PDF + DOCX
     print(f"\n[3/4] Generating files...")
@@ -368,7 +472,14 @@ def main():
 
     # Summary
     with open(os.path.join(out_dir,"summary.txt"),"w") as f:
-        f.write(f"每日财经新闻 {today}\n{len(items)} 条新闻\n{hits}/{len(SOURCES)} 个来源\n")
+        f.write(f"每日财经新闻 {today}\n")
+        f.write(f"筛选后 {len(items)} 条重要新闻 (已过滤噪音)\n")
+        f.write(f"覆盖 {hits}/{len(SOURCES)} 个来源\n\n")
+        if briefing:
+            f.write("=== 今日市场简报 ===\n")
+            f.write(briefing)
+            f.write("\n\n")
+        f.write("=== 分类统计 ===\n")
         for cat in CAT_ORDER:
             cnt = len([i for i in items if i["category"]==cat])
             if cnt: f.write(f"{CAT_LABELS.get(cat,cat)}: {cnt} 条\n")
